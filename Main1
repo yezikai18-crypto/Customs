@@ -1,0 +1,1120 @@
+if not game:IsLoaded() then game.Loaded:Wait() end
+wait(4)
+print("Customs Script Loading...")
+warn("Customs Script Loading...")
+
+wait(2)
+
+print("Customs Script Loaded!")
+warn("Customs Script Loaded!")
+
+wait(2)
+
+--[[
+    ============================================================
+    [ USER CONFIGURATION ]
+    Configure your settings below.
+    ============================================================
+]]
+
+getgenv().UserConfig = {
+    -- [ MAIN SETTINGS ]
+    BuyLuckyArrows = true,      -- Automatically buy Lucky Arrows from shop
+    AutoSellItems  = true,      -- Automatically sell items to merchant
+    AutoUseLuckyArrows = false, -- Set to false to SAVE your Lucky Arrows, true to USE them
+   
+    -- [ WEBHOOK SETTINGS ]
+    WebhookUrl = "https://discord.com/api/webhooks/1432204050270650459/hDWv_c3cz3Bqt6zJGTQqgYZm8654E0mwHPmzHydvHsMsP3GGCbBXjgI0kHMwL8bJ9OjO",
+
+    -- [ STAND FARMING ]
+    WantedSkins = {
+        "Jack-O-Platinum",
+        "Ghost World",
+        "Bloodthirster",
+        "Crazy Overseer",
+        "Tyrant Crimson",
+        "Diva Down",
+        "Bondrewd",
+        "Deadeye Drifter",
+        "O5 Keycard",
+        "SCP-106",
+        "The Doorman",
+        "Fury Nautilodaunt",
+        "Joe's Pride"
+
+    },
+
+    -- [ ITEM MANAGEMENT ]
+    RokasToKeep = 5, -- How many Rokas to keep in inventory (sells the rest)
+   
+    -- Items to Sell (true = sell, false = keep)
+    SellList = {
+        ["Gold Coin"] = true,
+        ["Rokakaka"] = true,
+        ["Pure Rokakaka"] = true,
+        ["Mysterious Arrow"] = true,
+        ["Diamond"] = true,
+        ["Ancient Scroll"] = true,
+        ["Caesar'Headband"] = true,
+        ["Stone Mask"] = true,
+        ["Rib Cage of The Saint's Corpse"] = true,
+        ["Quinton's Glove"] = true,
+        ["Zeppeli's Hat"] = true,
+        ["Lucky Arrow"] = false,
+        ["Clackers"] = true,
+        ["Steel Ball"] = true,
+        ["Dio's Diary"] = true,
+        ["Caesar's Headband"] = true,
+    },
+
+    -- Item Limits (Script moves to next task when these amounts are reached)
+    -- NOTE: If you own the x2 Gamepass, the script automatically doubles these numbers.
+    MaxItemCap = {
+        ["Gold Coin"] = 45,
+        ["Rokakaka"] = 25,
+        ["Pure Rokakaka"] = 10,
+        ["Mysterious Arrow"] = 25,
+        ["Diamond"] = 30,
+        ["Ancient Scroll"] = 10,
+        ["Caesar's Headband"] = 10,
+        ["Stone Mask"] = 10,
+        ["Rib Cage of The Saint's Corpse"] = 20,
+        ["Quinton's Glove"] = 10,
+        ["Zeppeli's Hat"] = 10,
+        ["Lucky Arrow"] = 10,
+        ["Clackers"] = 10,
+        ["Steel Ball"] = 10,
+        ["Dio's Diary"] = 10,
+        ["Redeemed Lucky Arrow"] = 10
+    }
+}
+
+--[[
+    ============================================================
+    [ SECURITY / WHITELIST SYSTEM ]
+    REMOVED per user request. Script is now open.
+    ============================================================
+]]
+
+--[[
+    ============================================================
+    [ SCRIPT LOGIC STARTS HERE ]
+    Do not edit below this line unless you know what you are doing.
+    ============================================================
+]]
+
+--// Global Services
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local v3 = Vector3.new
+
+--// Global Player Variables
+local Player = Players.LocalPlayer
+repeat task.wait() until Player
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+--// [ FUNCTION DECLARATIONS MOVED TO TOP ]
+local function GetCharacter(Part)
+    if Player.Character then
+        if not Part then
+            return Player.Character
+        elseif typeof(Part) == "string" then
+            return Player.Character:FindFirstChild(Part) or nil
+        end
+    end
+    return nil
+end
+
+local function TeleportTo(Position)
+    local char = GetCharacter()
+    if not char then
+        print("CUSTOMS DEBUG: TeleportTo failed, character not found.")
+        return
+    end
+
+    local HumanoidRootPart = char:WaitForChild("HumanoidRootPart", 5)
+   
+    if HumanoidRootPart then
+        local PositionType = typeof(Position)
+        if PositionType == "CFrame" then
+            HumanoidRootPart.CFrame = Position
+        end
+    else
+        print("CUSTOMS DEBUG: TeleportTo failed, HumanoidRootPart not found after 5s.")
+    end
+end
+
+local function ToggleNoclip(Value)
+    local Character = GetCharacter()
+    if Character then
+        for _, Child in pairs(Character:GetDescendants()) do
+            if Child:IsA("BasePart") and Child.CanCollide == not Value then
+                Child.CanCollide = Value
+            end
+        end
+    end
+end
+
+
+--// Customs Stand Farm Logic (Integrated)
+local Customs = {Utils={}}
+Customs.__index = Customs
+Customs.Utils.__index = Customs.Utils
+
+function Customs.Utils.MakeUtilController()
+    return setmetatable({
+        Tasks = {}; States = {}; Ints = {}; Strings = {}; Tables = {};
+    }, Customs.Utils)
+end
+
+function Customs.Utils:GetPlayer() return Players.LocalPlayer end
+function Customs.Utils:GetCharacter() return self:GetPlayer().Character or self:GetPlayer().CharacterAdded:Wait() end
+function Customs.Utils:GetHRP()
+    local c = self:GetCharacter()
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+function Customs.Utils:GetHumanoid()
+    local c = self:GetCharacter()
+    return c and c:FindFirstChildWhichIsA("Humanoid")
+end
+function Customs.Utils:CountItem(Item)
+    local bp = self:GetPlayer().Backpack
+    local cnt = 0
+    for _, t in pairs(bp:GetChildren()) do if t.Name == Item then cnt = cnt + 1 end end
+    local char = self:GetCharacter()
+    local equippedTool = char:FindFirstChildWhichIsA("Tool")
+    if equippedTool and equippedTool.Name == Item then
+        cnt = cnt + 1
+    end
+    return cnt
+end
+function Customs.Utils:HasStand()
+    local val = self:GetPlayer().PlayerStats.Stand.Value
+    return val ~= "None" and val ~= "" and val ~= "Loading"
+end
+function Customs.Utils:CheckStand() return self:GetPlayer().PlayerStats.Stand.Value end
+function Customs.Utils:CheckShiny()
+    local char = self:GetCharacter()
+    if char and char:FindFirstChild("RemoteFunction")then
+        local success, skin = pcall(function()
+            return char.RemoteFunction:InvokeServer("ReturnStandSkin","Stand")
+        end)
+       
+        if not success then return "nil" end
+        if skin == nil then return "nil" end
+        if type(skin) ~= "string" then return "nil" end
+        if skin == "" then return "None" end
+        return skin
+    end
+    return "nil"
+end
+
+function Customs.Utils:LogSkinToFile(skinName)
+    local filename = "YBA_Skins_History.txt"
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    local content = string.format("[%s] Rolled: %s\n", timestamp, tostring(skinName))
+   
+    local success, err = pcall(function()
+        if isfile and isfile(filename) then
+            appendfile(filename, content)
+        elseif writefile then
+            writefile(filename, content)
+        end
+    end)
+   
+    if success then
+        print("Customs Logger: Saved " .. tostring(skinName) .. " to history file.")
+    else
+        warn("Customs Logger Failed: " .. tostring(err))
+    end
+end
+
+function Customs.Utils:UseRoka()
+    print("Customs DEBUG: Inside UseRoka function.")
+    local rokaTool
+    local char = self:GetCharacter()
+   
+    if char and char:FindFirstChild("Rokakaka") then
+        rokaTool = char.Rokakaka
+        print("Customs DEBUG: Roka is already equipped. Clicking...")
+    elseif self:GetPlayer().Backpack:FindFirstChild("Rokakaka") then
+        rokaTool = self:GetPlayer().Backpack.Rokakaka
+        self:GetHumanoid():EquipTool(rokaTool)
+        print("Customs DEBUG: Equipping Roka from backpack...")
+        repeat task.wait() until self:GetCharacter() and self:GetCharacter():FindFirstChild("Rokakaka")
+        print("Customs DEBUG: Roka equipped. Clicking...")
+    else
+        print("Customs DEBUG: No Roka found in character or backpack.");
+        return
+    end
+   
+    repeat VirtualInputManager:SendMouseButtonEvent(0,8,0,true,nil,1);task.wait(.05)
+    until self:GetPlayer().PlayerGui:FindFirstChild("DialogueGui")
+    print("Customs DEBUG: DialogueGui found. Clicking for Option1...")
+   
+    repeat VirtualInputManager:SendMouseButtonEvent(0,8,0,true,nil,1);task.wait(.05)
+    until self:GetPlayer().PlayerGui.DialogueGui.Frame.Options:FindFirstChild("Option1")
+    print("Customs DEBUG: Option1 found. Firing click event (no visibility check).")
+   
+    local eat=self:GetPlayer().PlayerGui.DialogueGui.Frame.Options.Option1
+   
+    for _,v in pairs(getconnections(eat.TextButton.MouseButton1Click))do v:Fire()end
+   
+    repeat task.wait()until not self:GetPlayer().PlayerGui:FindFirstChild("DialogueGui")
+    print("Customs DEBUG: DialogueGui is gone. Waiting for character respawn.")
+   
+    local newChar = self:GetPlayer().CharacterAdded:Wait()
+    print("Customs DEBUG: Character model added. Waiting for HumanoidRootPart...")
+    newChar:WaitForChild("HumanoidRootPart", 10)
+   
+    print("Customs DEBUG: Character fully respawned. Waiting 2 seconds...")
+    task.wait(2)
+
+    if newChar:FindFirstChild("HumanoidRootPart") then
+        print("Customs DEBUG: Teleporting back to safe spot.")
+        TeleportTo(CFrame.new(978, -42, -49))
+    else
+        print("Customs DEBUG: Teleport failed, new HumanoidRootPart not found after respawn.")
+    end
+    print("Customs DEBUG: UseRoka finished.")
+end
+
+function Customs.Utils:UseMysteriousArrow()
+    print("Customs DEBUG: Inside UseMysteriousArrow function.")
+    if self:HasStand() then
+        warn("Customs DEBUG: Script thinks you have a stand, but attempting arrow anyway (User Override).")
+    end
+   
+    local arrowTool
+    local char = self:GetCharacter()
+
+    if char and char:FindFirstChild("Mysterious Arrow") then
+        arrowTool = char["Mysterious Arrow"]
+        print("Customs DEBUG: Mysterious Arrow is already equipped. Clicking...")
+    elseif self:GetPlayer().Backpack:FindFirstChild("Mysterious Arrow") then
+        arrowTool = self:GetPlayer().Backpack:FindFirstChild("Mysterious Arrow")
+        self:GetHumanoid():EquipTool(arrowTool)
+        print("Customs DEBUG: Equipping Mysterious Arrow from backpack...")
+        repeat task.wait() until self:GetCharacter() and self:GetCharacter():FindFirstChild("Mysterious Arrow")
+        print("Customs DEBUG: Mysterious Arrow equipped. Clicking...")
+    else
+        print("Customs DEBUG: No Mysterious Arrow found in character or backpack.");
+        return false
+    end
+   
+    repeat VirtualInputManager:SendMouseButtonEvent(0,8,0,true,nil,1);task.wait(.05)
+    until self:GetPlayer().PlayerGui:FindFirstChild("DialogueGui")
+    print("Customs DEBUG: DialogueGui found. Clicking for Option1...")
+   
+    repeat VirtualInputManager:SendMouseButtonEvent(0,8,0,true,nil,1);task.wait(.05)
+    until self:GetPlayer().PlayerGui.DialogueGui.Frame.Options:FindFirstChild("Option1")
+    print("Customs DEBUG: Option1 found. Firing click event (no visibility check).")
+   
+    local eat=self:GetPlayer().PlayerGui.DialogueGui.Frame.Options.Option1
+   
+    for _,v in pairs(getconnections(eat.TextButton.MouseButton1Click))do v:Fire()end
+   
+    repeat task.wait()until not self:GetPlayer().PlayerGui:FindFirstChild("DialogueGui")
+    print("Customs DEBUG: DialogueGui is gone. UseMysteriousArrow finished.")
+    return true
+end
+
+function Customs.Utils:UseRedeemedLuckyArrow()
+    print("Customs DEBUG: Inside UseRedeemedLuckyArrow function.")
+    if self:HasStand() then
+        warn("Customs DEBUG: Script thinks you have a stand, but attempting arrow anyway (User Override).")
+    end
+   
+    local arrowTool
+    local char = self:GetCharacter()
+
+    if char and char:FindFirstChild("Redeemed Lucky Arrow") then
+        arrowTool = char["Redeemed Lucky Arrow"]
+        print("Customs DEBUG: Redeemed Lucky Arrow is already equipped. Clicking...")
+    elseif self:GetPlayer().Backpack:FindFirstChild("Redeemed Lucky Arrow") then
+        arrowTool = self:GetPlayer().Backpack:FindFirstChild("Redeemed Lucky Arrow")
+        self:GetHumanoid():EquipTool(arrowTool)
+        print("Customs DEBUG: Equipping Redeemed Lucky Arrow from backpack...")
+        repeat task.wait() until self:GetCharacter() and self:GetCharacter():FindFirstChild("Redeemed Lucky Arrow")
+        print("Customs DEBUG: Redeemed Lucky Arrow equipped. Clicking...")
+    else
+        print("Customs DEBUG: No Redeemed Lucky Arrow found in character or backpack.");
+        return false
+    end
+   
+    repeat VirtualInputManager:SendMouseButtonEvent(0,8,0,true,nil,1);task.wait(.05)
+    until self:GetPlayer().PlayerGui:FindFirstChild("DialogueGui")
+    print("Customs DEBUG: DialogueGui found. Clicking for Option1...")
+   
+    repeat VirtualInputManager:SendMouseButtonEvent(0,8,0,true,nil,1);task.wait(.05)
+    until self:GetPlayer().PlayerGui.DialogueGui.Frame.Options:FindFirstChild("Option1")
+    print("Customs DEBUG: Option1 found. Firing click event (no visibility check).")
+   
+    local eat=self:GetPlayer().PlayerGui.DialogueGui.Frame.Options.Option1
+   
+    for _,v in pairs(getconnections(eat.TextButton.MouseButton1Click))do v:Fire()end
+   
+    repeat task.wait()until not self:GetPlayer().PlayerGui:FindFirstChild("DialogueGui")
+    print("Customs DEBUG: DialogueGui is gone. UseRedeemedLuckyArrow finished.")
+    return true
+end
+
+function Customs.Utils:UseLuckyArrow()
+    print("Customs DEBUG: Inside UseLuckyArrow function.")
+    if self:HasStand() then
+        warn("Customs DEBUG: Script thinks you have a stand, but attempting arrow anyway (User Override).")
+    end
+   
+    local arrowTool
+    local char = self:GetCharacter()
+
+    if char and char:FindFirstChild("Lucky Arrow") then
+        arrowTool = char["Lucky Arrow"]
+        print("Customs DEBUG: Lucky Arrow is already equipped. Clicking...")
+    elseif self:GetPlayer().Backpack:FindFirstChild("Lucky Arrow") then
+        arrowTool = self:GetPlayer().Backpack:FindFirstChild("Lucky Arrow")
+        self:GetHumanoid():EquipTool(arrowTool)
+        print("Customs DEBUG: Equipping Lucky Arrow from backpack...")
+        repeat task.wait() until self:GetCharacter() and self:GetCharacter():FindFirstChild("Lucky Arrow")
+        print("Customs DEBUG: Lucky Arrow equipped. Clicking...")
+    else
+        print("Customs DEBUG: No Lucky Arrow found in character or backpack.");
+        return false
+    end
+   
+    repeat VirtualInputManager:SendMouseButtonEvent(0,8,0,true,nil,1);task.wait(.05)
+    until self:GetPlayer().PlayerGui:FindFirstChild("DialogueGui")
+    print("Customs DEBUG: DialogueGui found. Clicking for Option1...")
+   
+    repeat VirtualInputManager:SendMouseButtonEvent(0,8,0,true,nil,1);task.wait(.05)
+    until self:GetPlayer().PlayerGui.DialogueGui.Frame.Options:FindFirstChild("Option1")
+    print("Customs DEBUG: Option1 found. Firing click event (no visibility check).")
+   
+    local eat=self:GetPlayer().PlayerGui.DialogueGui.Frame.Options.Option1
+   
+    for _,v in pairs(getconnections(eat.TextButton.MouseButton1Click))do v:Fire()end
+   
+    repeat task.wait()until not self:GetPlayer().PlayerGui:FindFirstChild("DialogueGui")
+    print("Customs DEBUG: DialogueGui is gone. UseLuckyArrow finished.")
+    return true
+end
+function Customs.Utils:Stats()
+    print("Customs DEBUG: Upgrading stats...")
+    repeat task.wait()until self:GetCharacter()and self:GetCharacter():FindFirstChild("RemoteFunction")
+    for _,skill in pairs({"Agility I","Agility II","Agility III","Worthiness"})do
+        self:GetCharacter().RemoteFunction:InvokeServer("LearnSkill",{Skill=skill,SkillTreeType="Character"})
+    end
+    print("Customs DEBUG: Stats upgraded.")
+end
+
+-- [BUGFIXED WEBHOOK FUNCTION WITH SAFE PCALL & RATE-LIMIT HANDLING]
+function Customs.Utils:SendWebhook(url, msg, title)
+    if not url or url == "" then return end
+    print("Customs DEBUG: Sending webhook...")
+    
+    task.spawn(function()
+        local success, err = pcall(function()
+            local body = HttpService:JSONEncode({embeds = {{title = title, description = msg, color = 0x7269ff}}})
+            local req = (http_request or request or syn and syn.request or fluxus and fluxus.request or http and http.request)
+            if req then
+                req({
+                    Url = url,
+                    Method = "POST",
+                    Headers = {["Content-Type"] = "application/json"},
+                    Body = body
+                })
+            end
+        end)
+        
+        if not success then
+            warn("Customs Webhook Error: " + tostring(err))
+        end
+    end)
+end
+
+--// Customs Helper Functions
+game:GetService("CoreGui").DescendantAdded:Connect(function(child)
+    if child.Name == "ErrorPrompt" then
+        local GrabError = child:FindFirstChild("ErrorMessage",true)
+        repeat task.wait() until GrabError.Text ~= "Label"
+        local Reason = GrabError.Text
+        if Reason:match("kick") or Reason:match("You") or Reason:match("conn") or Reason:match("rejoin") then
+            game:GetService("TeleportService"):Teleport(2809202155, game:GetService("Players").LocalPlayer)
+        end
+    end
+end)
+
+local Has2x = MarketplaceService:UserOwnsGamePassAsync(Player.UserId, 14597778)
+
+local oldMagnitude
+oldMagnitude = hookmetamethod(Vector3.new(), "__index", newcclosure(function(self, index)
+    local CallingScript = tostring(getcallingscript())
+    if not checkcaller() and index == "magnitude" and CallingScript == "ItemSpawn" then
+        return 0
+    end
+    return oldMagnitude(self, index)
+end))
+
+local ItemSpawnFolder = Workspace:WaitForChild("Item_Spawns"):WaitForChild("Items")
+
+local MaxItemAmounts = getgenv().UserConfig.MaxItemCap
+
+if Has2x then
+    for Index, Max in pairs(MaxItemAmounts) do
+        MaxItemAmounts[Index] = Max * 2
+    end
+end
+
+local function HasMaxItem(Item)
+    local Count = 0
+    for _, Tool in pairs(Player.Backpack:GetChildren()) do
+        if Tool.Name == Item then
+            Count = Count + 1
+        end
+    end
+    if MaxItemAmounts[Item] then
+        return Count >= MaxItemAmounts[Item]
+    else
+        return false
+    end
+end
+
+local function HasLuckyArrows()
+    local Count = 0
+    for _, Tool in pairs(Player.Backpack:GetChildren()) do
+        if Tool.Name == "Lucky Arrow" then
+            Count = Count + 1
+        end
+    end
+    return Count >= 9
+end
+
+
+local function GetItemInfo(Model)
+    if Model and Model:IsA("Model") and Model.Parent and Model.Parent.Name == "Items" then
+        local PrimaryPart = Model.PrimaryPart
+        if not PrimaryPart then return nil end
+       
+        local Position = PrimaryPart.Position
+        local ProximityPrompt
+        for _, ItemInstance in pairs(Model:GetChildren()) do
+            if ItemInstance:IsA("ProximityPrompt") and ItemInstance.MaxActivationDistance == 8 then
+                ProximityPrompt = ItemInstance
+            end
+        end
+        if ProximityPrompt then
+            return {["Name"] = ProximityPrompt.ObjectText, ["ProximityPrompt"] = ProximityPrompt, ["Position"] = Position}
+        end
+    end
+    return nil
+end
+
+getgenv().SpawnedItems = {}
+
+ItemSpawnFolder.ChildAdded:Connect(function(Model)
+    task.wait(1)
+    if Model:IsA("Model") then
+        local ItemInfo = GetItemInfo(Model)
+        if ItemInfo then
+            if not getgenv().SpawnedItems then getgenv().SpawnedItems = {} end
+            getgenv().SpawnedItems[Model] = ItemInfo
+        end
+    end
+end)
+
+local UzuKeeIsRetardedAndDoesntKnowHowToMakeAnAntiCheatOnTheServerSideAlsoVexStfuIKnowTheCodeIsBadYouDontNeedToTellMe = "  ___XP DE KEY"
+
+local oldNc
+oldNc = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local Method = getnamecallmethod()
+    local Args = {...}
+    if not checkcaller() and rawequal(self.Name, "Returner") and rawequal(Args[1], "idklolbrah2de") then
+        return UzuKeeIsRetardedAndDoesntKnowHowToMakeAnAntiCheatOnTheServerSideAlsoVexStfuIKnowTheCodeIsBadYouDontNeedToTellMe
+    end
+    return oldNc(self, ...)
+end))
+
+--// Server Hop Logic
+local PlaceID = game.PlaceId
+local AllIDs = {}
+local foundCursor = ""
+local currentHour = os.date("!*t").hour
+
+local success, result = pcall(function() return HttpService:JSONDecode(readfile("NotSameServers.json")) end)
+if success and type(result) == "table" then
+    AllIDs = result
+else
+    AllIDs = {currentHour}
+    writefile("NotSameServers.json", HttpService:JSONEncode(AllIDs))
+end
+
+local hourMatch = false
+for _, entry in pairs(AllIDs) do if tonumber(entry) == currentHour then hourMatch = true; break end end
+if not hourMatch then
+    pcall(function() delfile("NotSameServers.json") end)
+    AllIDs = {currentHour}
+end
+local function ServerHop()
+    -- Alert the user via Webhook right before beginning the active teleport phase
+    local currentWallet = "Unknown"
+    if Player:FindFirstChild("PlayerStats") and Player.PlayerStats:FindFirstChild("Money") then
+        currentWallet = tostring(Player.PlayerStats.Money.Value)
+    end
+    print("Main Script: Preparing to hop server. Wallet balance: $" .. currentWallet)
+    Customs.Utils:SendWebhook(
+        getgenv().UserConfig.WebhookUrl,
+        "User: `"..tostring(Player.Name).."` is server hopping.\nRemaining Cash: `$"..currentWallet.."`",
+        "🌐 SERVER HOPPING..."
+    )
+    task.wait(1) -- Short buffer to guarantee webhook dispatch completes
+
+    local url = "https://games.roblox.com/v1/games/" .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100"
+    if foundCursor ~= "" then url = url .. "&cursor=" .. foundCursor end
+
+    local httpSuccess, httpResult = pcall(function()
+        return game:HttpGet(url)
+    end)
+   
+    if not httpSuccess then
+        warn("Server hop HTTPGet failed:", httpResult)
+        return
+    end
+   
+    local decodeSuccess, response = pcall(function()
+        return HttpService:JSONDecode(httpResult)
+    end)
+   
+    if not decodeSuccess then
+        warn("Server hop JSONDecode failed:", response)
+        return
+    end
+
+    foundCursor = response.nextPageCursor or ""
+
+    if typeof(response.data) == "table" then
+        local validServers = {}
+        
+        -- Collect all valid servers into a pool instead of picking the first one
+        for _, server in pairs(response.data) do
+            local id = tostring(server.id)
+            local isNew = not table.find(AllIDs, id)
+            local hasSpace = server.playing < server.maxPlayers
+
+            if isNew and hasSpace then
+                table.insert(validServers, id)
+            end
+        end
+
+        if #validServers > 0 then
+            -- Pick a random server from the valid pool
+            local randomId = validServers[math.random(1, #validServers)]
+            table.insert(AllIDs, randomId)
+            writefile("NotSameServers.json", HttpService:JSONEncode(AllIDs))
+           
+            local teleportBound = false
+            local connection
+            connection = game.Players.LocalPlayer.OnTeleport:Connect(function(teleportState)
+                if teleportState == Enum.TeleportState.Started then
+                    teleportBound = true
+                    connection:Disconnect()
+                end
+            end)
+           
+            TeleportService:TeleportToPlaceInstance(PlaceID, randomId, Players.LocalPlayer)
+           
+            task.wait(5)
+           
+            if not teleportBound then
+                warn("TeleportService failed to initiate. Trying again...")
+                connection:Disconnect()
+                if table.find(AllIDs, randomId) then
+                    table.remove(AllIDs, table.find(AllIDs, randomId))
+                end
+            end
+           
+            return
+        end
+    else
+        warn("Server hop failed: response.data is not a table")
+    end
+   
+    if foundCursor == "" then
+        warn("Looped all servers, no new ones found. Resetting for next attempt.")
+    end
+end
+
+local function Teleport()
+    while true do
+        local success, err = pcall(ServerHop)
+        if not success then
+            warn("ServerHop function crashed:", err)
+        end
+        task.wait(5)
+    end
+end
+
+--// [ 5-MINUTE FAILSAFE TIMER ] --
+task.spawn(function()
+    task.wait(300) -- 300 seconds = 5 minutes
+    warn("FAILSAFE TRIGGERED: Script has been running for 5 minutes. Forcing server hop...")
+    Customs.Utils:SendWebhook(
+        getgenv().UserConfig.WebhookUrl,
+        "User: `"..tostring(Player.Name).."` hit the 5-minute failsafe timer. Forcing server hop.",
+        "⚠️ FAILSAFE ACTIVATED"
+    )
+    task.wait(1)
+    Teleport()
+end)
+
+--// Replace your existing RunStandFarm function with this fixed version:
+
+local function RunStandFarm(WantedShinys, WebhookURL)
+    local Util = Customs.Utils.MakeUtilController()
+   
+    -- Check config: Only count Lucky Arrows if AutoUseLuckyArrows is true
+    local autoUseLucky = getgenv().UserConfig.AutoUseLuckyArrows
+    local hasLucky = autoUseLucky and (Util:CountItem("Lucky Arrow") > 0)
+   
+    local hasRedeemed = Util:CountItem("Redeemed Lucky Arrow") > 0
+    local hasRoka = Util:CountItem("Rokakaka") > 0
+   
+    print("Customs DEBUG: Starting Stand Farm Loop...")
+
+    while (hasLucky or hasRedeemed) and ( (Util:HasStand() and hasRoka) or (not Util:HasStand()) ) do
+       
+        local current = Util:CheckShiny()
+       
+        -- Refresh counts each loop iteration while respecting config
+        hasLucky = autoUseLucky and (Util:CountItem("Lucky Arrow") > 0)
+        hasRedeemed = Util:CountItem("Redeemed Lucky Arrow") > 0
+        hasRoka = Util:CountItem("Rokakaka") > 0
+       
+        if current == "nil" or (not Util:HasStand()) then
+            print("Customs DEBUG: No stand equipped (or nil detected). Attempting to use Lucky Arrow.")
+            Util:Stats()
+           
+            local used = false
+            if hasLucky then
+                print("Customs DEBUG: Using Lucky Arrow...")
+                used = Util:UseLuckyArrow()
+            elseif hasRedeemed then
+                print("Customs DEBUG: Using Redeemed Lucky Arrow...")
+                used = Util:UseRedeemedLuckyArrow()
+            end
+           
+            if used then
+                print("Customs DEBUG: Arrow used. Waiting for stand...")
+                local s = os.clock()
+                repeat task.wait(0.5) until Util:HasStand() or (os.clock() - s > 10)
+            else
+                print("Customs DEBUG: Failed to use lucky arrow (or none left). Exiting stand farm.")
+                break
+            end
+
+       elseif current ~= "nil" then
+           
+            -- Unconditionally log and send a webhook for EVERY skin rolled
+            Util:LogSkinToFile(current)
+            Util:SendWebhook(WebhookURL,
+                "User: `"..tostring(Util:GetPlayer().Name).."`\nStand: `"..tostring(Util:CheckStand()).."`\nSkin: `"..tostring(current).."`\nPity: `"..tostring(Util:GetPlayer().PlayerStats.PityCount.Value).."`",
+                "🖼️ NEW SKIN ROLLED!")
+           
+            if table.find(WantedShinys, current) then
+                print("Customs DEBUG: !!! WANTED SKIN DETECTED: " .. tostring(current) .. " !!!")
+               
+                -- [BUGFIX: Added a brief safety delay so Discord doesn't drop the second back-to-back webhook due to rate limits]
+                task.wait(1.5)
+
+                Util:SendWebhook(WebhookURL,
+                    "User: `"..tostring(Util:GetPlayer().Name).."`\nStand: `"..tostring(Util:CheckStand()).."`\nSkin: `"..tostring(current).."`\nPity: `"..tostring(Util:GetPlayer().PlayerStats.PityCount.Value).."`",
+                    "🚨 WANTED SKIN OBTAINED!")
+               
+                local character = Util:GetCharacter()
+                if character and character:FindFirstChild("SummonedStand") and character.SummonedStand.Value == true then
+                    print("Customs DEBUG: Stand is summoned. Attempting to desummon for swap...")
+                    local rf = character:FindFirstChild("RemoteFunction")
+                    if rf then
+                        rf:InvokeServer("ToggleStand", "Toggle")
+                        task.wait(1.5)
+                    end
+                end
+               
+                print("Customs DEBUG: Scanning for empty slots to swap...")
+                local foundEmptySlot = false
+                local scrollingFrame = nil
+               
+                local pg = Util:GetPlayer():FindFirstChild("PlayerGui")
+                local hud = pg and pg:FindFirstChild("HUD")
+                local main = hud and hud:FindFirstChild("Main")
+                local frames = main and main:FindFirstChild("Frames")
+                local stands = frames and frames:FindFirstChild("Stands")
+                scrollingFrame = stands and stands:FindFirstChild("ScrollingFrame")
+               
+                if scrollingFrame then
+                    for i = 1, 6 do
+                        local slotName = "Slot" + i -- Fixed string formatting or keep as "Slot" .. i
+                        local slotObj = scrollingFrame:FindFirstChild("Slot" .. i)
+                       
+                        if slotObj then
+                            local lbl = slotObj:FindFirstChild("TextLabel")
+                            if lbl then
+                                local txt = lbl.Text:lower()
+                                if string.find(txt, "none") or string.find(txt, "empty") then
+                                    print("Customs DEBUG: Found empty slot: Slot" .. i .. ". Swapping now!")
+                                   
+                                    local charAdded = false
+                                    local conn = Util:GetPlayer().CharacterAdded:Connect(function() charAdded = true end)
+                                   
+                                    Util:GetCharacter().RemoteEvent:FireServer("SwapStand", "Slot" .. i)
+                                   
+                                    local s = os.clock()
+                                    repeat task.wait(0.1) until charAdded or (os.clock() - s > 10)
+                                    if conn then conn:Disconnect() end
+                                   
+                                    if charAdded then
+                                        print("Customs DEBUG: Swap successful. Character respawned.")
+                                        task.wait(3)
+                                        TeleportTo(CFrame.new(978, -42, -49))
+                                       
+                                        print("Customs DEBUG: Resuming farm.")
+                                        foundEmptySlot = true
+                                        break
+                                    else
+                                        print("Customs DEBUG: Swap command sent but no respawn detected.")
+                                    end
+                                end
+                            end
+                        end
+                    end
+                   
+                    if not foundEmptySlot then
+                        print("Customs DEBUG: WARNING: No empty slots found! Cannot swap.")
+                        break
+                    end
+                else
+                    print("Customs DEBUG: Could not find HUD/ScrollingFrame to check slots.")
+                end
+               
+            else
+                print("Customs DEBUG: Unwanted skin ("..tostring(current).."). Using Roka.")
+                Util:UseRoka()
+            end
+        end
+       
+        if not hasLucky and not hasRedeemed then
+             print("Customs DEBUG: Out of usable lucky arrows. Exiting farm.")
+             break
+        end
+        if Util:HasStand() and current ~= "None" and current ~= "nil" and not table.find(WantedShinys, current) and not hasRoka then
+            print("Customs DEBUG: Unwanted stand and no Rokas left. Exiting farm.")
+            break
+        end
+       
+        task.wait(1.5)
+    end
+   
+    print("Customs DEBUG: Stand farm loop finished. Proceeding to server hop.")
+end
+local function HandleHalloweenMerchant()
+    local Util = Customs.Utils.MakeUtilController()
+    local char = Util:GetCharacter()
+    local Player = Util:GetPlayer()
+    
+    print("Main Script: Starting Halloween Event merchant logic...")
+    
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local halloweenDialogue = ReplicatedStorage:FindFirstChild("Dialogue") and ReplicatedStorage.Dialogue:FindFirstChild("Halloween Event") 
+    
+    if not halloweenDialogue then
+        warn("Main Script: Halloween Event dialogue object not found in ReplicatedStorage.Dialogue.")
+        return
+    end
+    
+    
+    -- Phase 1: Turn in all candy
+    print("Main Script: Phase 1 - Turning in candy...")
+    char.RemoteEvent:FireServer("PromptTriggered", halloweenDialogue)
+    
+    local guiWait1 = os.clock()
+    repeat task.wait(0.1) until Player.PlayerGui:FindFirstChild("DialogueGui") or (os.clock() - guiWait1 > 3)
+    
+    if Player.PlayerGui:FindFirstChild("DialogueGui") then
+        task.wait(0.8)
+        local optionsFolder = Player.PlayerGui.DialogueGui.Frame.Options
+        
+        -- Press option 2 to turn in candy
+        if optionsFolder:FindFirstChild("Option2") then
+            print("Main Script: Clicking Option2 (Turn in candy)...")
+            for _,v in pairs(getconnections(optionsFolder.Option2.TextButton.MouseButton1Click)) do v:Fire() end
+            task.wait(0.8)
+        end
+    
+        task.wait(0.5)
+    end
+    print("Main Script: Phase 1 finished.")
+    
+  print("DEBUG: Waiting 4 seconds for server state reset (standing still)...")
+  task.wait(4)
+  print("DEBUG: Pressing Mouse 1 to advance dialogue...")
+  VirtualInputManager:SendMouseButtonEvent(0, 8, 0, true, nil, 1)
+  task.wait(2)
+  VirtualInputManager:SendMouseButtonEvent(0, 8, 0, false, nil, 1)
+  task.wait(1)
+    
+    -- Re-fetch character reference
+    char = Util:GetCharacter()
+    if not char or not char:FindFirstChild("RemoteEvent") then
+        warn("Main Script: Character lost during transition to Phase 2.")
+        return
+    end
+
+    -- Phase 2: Follow dialogue path (Option 3 -> Option 4 -> Option 6)
+    print("Main Script: Phase 2 - Opening shop/rewards dialogue...")
+    char.RemoteEvent:FireServer("PromptTriggered", halloweenDialogue)
+    
+    local guiWait2 = os.clock()
+    repeat task.wait(0.1) until Player.PlayerGui:FindFirstChild("DialogueGui") or (os.clock() - guiWait2 > 4)
+    
+    if Player.PlayerGui:FindFirstChild("DialogueGui") then
+        print("Main Script: Phase 2 DialogueGui appeared successfully.")
+        task.wait(0.8)
+        local optionsFolder = Player.PlayerGui.DialogueGui.Frame.Options
+        
+        if optionsFolder:FindFirstChild("Option3") then
+            print("Main Script: Clicking Option3...")
+            for _,v in pairs(getconnections(optionsFolder.Option3.TextButton.MouseButton1Click)) do v:Fire() end
+            task.wait(0.8)
+        else
+            warn("Main Script: Option3 not found in Phase 2.")
+        end
+        
+        if optionsFolder:FindFirstChild("Option4") then
+            print("Main Script: Clicking Option4...")
+            for _,v in pairs(getconnections(optionsFolder.Option4.TextButton.MouseButton1Click)) do v:Fire() end
+            task.wait(0.8)
+        else
+            warn("Main Script: Option4 not found in Phase 2.")
+        end
+        
+        if optionsFolder:FindFirstChild("Option6") then
+            print("Main Script: Clicking Option6...")
+            for _,v in pairs(getconnections(optionsFolder.Option6.TextButton.MouseButton1Click)) do v:Fire() end
+            task.wait(0.8)
+        else
+            warn("Main Script: Option6 not found in Phase 2.")
+        end
+        
+        local startTime = os.clock()
+        repeat task.wait(0.1) until not Player.PlayerGui:FindFirstChild("DialogueGui") or (os.clock() - startTime > 3)
+        
+        VirtualInputManager:SendMouseButtonEvent(0, 8, 0, true, nil, 1)
+        task.wait(2)
+        VirtualInputManager:SendMouseButtonEvent(0, 8, 0, false, nil, 1)
+        VirtualInputManager:SendMouseButtonEvent(0, 8, 0, true, nil, 1)
+        task.wait(1)
+    else
+        warn("Main Script: Phase 2 DialogueGui still ignored by server.")
+    end
+    print("Main Script: Halloween Event merchant logic completed.")
+    print("DEBUG: Waiting 4 seconds for server state reset (standing still)...")
+    task.wait(6)
+    print("DEBUG: Pressing Mouse 1 to advance dialogue...")
+end
+--// MAIN EXECUTION THREAD
+task.wait(1)
+
+if not PlayerGui:FindFirstChild("HUD") then
+    local HUD = ReplicatedStorage.Objects.HUD:Clone()
+    HUD.Parent = PlayerGui
+end
+
+task.spawn(function()
+    PlayerGui:WaitForChild("LoadingScreen1"):Destroy()
+    task.wait(.5)
+    pcall(function() PlayerGui:WaitForChild("LoadingScreen"):Destroy() end)
+    pcall(function() workspace.LoadingScreen.Song:Destroy() end)
+end)
+
+repeat task.wait() until GetCharacter() and GetCharacter("RemoteEvent")
+
+GetCharacter("RemoteEvent"):FireServer("PressedPlay")
+
+TeleportTo(CFrame.new(978, -42, -49))
+
+task.wait(5)
+
+-- 1. START ITEM FARM
+print("Main Script: Starting Item Farm...")
+repeat
+    local snapshot = {}
+    for k, v in pairs(getgenv().SpawnedItems) do
+        snapshot[k] = v
+    end
+
+    for Index, ItemInfo in pairs(snapshot) do
+        local HumanoidRootPart = GetCharacter("HumanoidRootPart")
+        if HumanoidRootPart then
+            local Name = ItemInfo.Name
+            local HasMax = HasMaxItem(Name)
+           
+            if getgenv().SpawnedItems[Index] then
+                if not HasMax then
+                    local ProximityPrompt = ItemInfo.ProximityPrompt
+                    local Position = ItemInfo.Position
+                   
+                    getgenv().SpawnedItems[Index] = nil
+                   
+                    local BodyVelocity = Instance.new("BodyVelocity")
+                    BodyVelocity.Parent = HumanoidRootPart
+                    BodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                   
+                    ToggleNoclip(true)
+                    TeleportTo(CFrame.new(Position.X, Position.Y + 25, Position.Z))
+                    task.wait(.5)
+                    fireproximityprompt(ProximityPrompt)
+                    task.wait(.5)
+                    BodyVelocity:Destroy()
+                    TeleportTo(CFrame.new(978, -42, -49))
+                else
+                    getgenv().SpawnedItems[Index] = nil
+                end
+            end
+        end
+    end
+    task.wait(3)
+until next(getgenv().SpawnedItems) == nil
+print("Main Script: Item Farm loop finished.")
+
+-- 2. START AUTO-SELL
+if getgenv().UserConfig.AutoSellItems then
+    print("Main Script: Starting Auto-Sell...")
+   
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local merchantDialogue = ReplicatedStorage:FindFirstChild("Dialogue") and ReplicatedStorage.Dialogue:FindFirstChild("Merchant")
+
+    if not merchantDialogue then
+        warn("Main Script: Merchant dialogue object not found.")
+    else
+        for Item, Sell in pairs(getgenv().UserConfig.SellList) do
+            if Sell and Player.Backpack:FindFirstChild(Item) then
+                print("Main Script: Attempting to sell " .. Item)
+                local itemToSell = Player.Backpack:FindFirstChild(Item)
+                local char = GetCharacter()
+                
+                if char and char:FindFirstChild("Humanoid") then
+                    char.Humanoid:EquipTool(itemToSell)
+                    local startTime = os.clock()
+                    repeat task.wait() until char:FindFirstChild(Item) or (os.clock() - startTime > 2)
+                    
+                    if char:FindFirstChild(Item) then
+                        -- 1. Trigger the Merchant Prompt
+                        char.RemoteEvent:FireServer("PromptTriggered", merchantDialogue)
+                        
+                        -- Wait for Dialogue GUI to appear with a timeout
+                        local guiWait = os.clock()
+                        repeat task.wait(0.1) until Player.PlayerGui:FindFirstChild("DialogueGui") or (os.clock() - guiWait > 3)
+                        
+                        if Player.PlayerGui:FindFirstChild("DialogueGui") then
+                            task.wait(0.8) -- Longer buffer for the server to load the initial options
+                            
+                            local optionsFolder = Player.PlayerGui.DialogueGui.Frame.Options
+                            task.wait(1)
+                            -- 2. Click "I'd like to sell this"
+                            if optionsFolder:FindFirstChild("Option1") then
+                                for _,v in pairs(getconnections(optionsFolder.Option1.TextButton.MouseButton1Click)) do v:Fire() end
+                                task.wait(0.8) -- Wait for the server to transition to the next page
+                            end
+                            task.wait(1)
+                            -- 3. Click "Deal"
+                            if optionsFolder:FindFirstChild("Option1") then
+                                for _,v in pairs(getconnections(optionsFolder.Option1.TextButton.MouseButton1Click)) do v:Fire() end
+                                task.wait(0.8) -- Wait for the final page to load
+                            end
+                            task.wait(1)
+                            -- 4. Click "I'd like to sell all of these"
+                            local finalOption = (Item == "Rokakaka") and "Option3" or "Option6"
+                            
+                            if optionsFolder:FindFirstChild(finalOption) then
+                                for _,v in pairs(getconnections(optionsFolder[finalOption].TextButton.MouseButton1Click)) do v:Fire() end
+                            end
+                            
+                            -- Wait for the UI to close or the item to disappear
+                            startTime = os.clock()
+                            repeat task.wait(0.1) until not char:FindFirstChild(Item) or not Player.PlayerGui:FindFirstChild("DialogueGui") or (os.clock() - startTime > 4)
+                        
+                            
+                            print("Main Script: Finished dialogue sequence for " .. Item)
+                        else
+                            print("Main Script: DialogueGui never appeared for " .. Item)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+-- 3. START BUYING LUCKY ARROWS
+local Money = Player.PlayerStats.Money
+if getgenv().UserConfig.BuyLuckyArrows and not HasLuckyArrows() then
+    print("Main Script: Buying Lucky Arrows...")
+    while Money.Value >= 75000 do
+        Player.Character.RemoteEvent:FireServer("PurchaseShopItem", {["ItemName"] = "1x Lucky Arrow"})
+        task.wait(.1)
+       
+        -- Dynamically calculate the updated Lucky Arrow count
+        local currentLuckyCount = Customs.Utils:CountItem("Lucky Arrow")
+        print("Main Script: Lucky Arrow bought! Current Total: " .. currentLuckyCount)
+       
+        -- Send a Discord notification immediately for each single purchase
+        Customs.Utils:SendWebhook(
+            getgenv().UserConfig.WebhookUrl,
+            "User: `"..tostring(Player.Name).."` just purchased **1x Lucky Arrow**!\nTotal in Inventory: `"..tostring(currentLuckyCount).." / 9`",
+            "🛍️ LUCKY ARROW PURCHASED"
+        )
+        
+        -- Buffer delay to prevent webhook rate limiting when buying fast
+        task.wait(0.5)
+       
+        -- Stop buying if we reach the ultimate goal of 9
+        if currentLuckyCount >= 9 then
+            print("Main Script: 9 Lucky Arrows capacity achieved. Breaking buy loop.")
+            break
+        end
+    end
+    print("Main Script: Finished buying Lucky Arrows.")
+end
+
+-- 5. HALLOWEEN EVENT MERCHANT & SERVER HOP
+print("Main Script: Checking Halloween Candy counts...")
+local Util = Customs.Utils.MakeUtilController()
+local redCandy = Util:CountItem("Red Candy")
+local blueCandy = Util:CountItem("Blue Candy")
+local yellowCandy = Util:CountItem("Yellow Candy")
+local greenCandy = Util:CountItem("Green Candy")
+
+local totalCandy = redCandy + blueCandy + yellowCandy + greenCandy
+
+if totalCandy > 100 then
+    print("Main Script: Over 100 candies found (" .. totalCandy .. "). Running Halloween Merchant logic...")
+    HandleHalloweenMerchant()
+else
+    print("Main Script: Only " .. totalCandy .. " candies found. Skipping Halloween Merchant.")
+end
+
+-- 4. START CUSTOMS STAND FARM
+print("Main Script: Starting Customs Stand Farm logic...")
+RunStandFarm(getgenv().UserConfig.WantedSkins, getgenv().UserConfig.WebhookUrl)
+
+print("Main Script: Customs Stand Farm logic finished.")
+
+-- 5. START SERVER HOP (Infinite Loop)
+print("Main Script: Starting Server Hop...")
+Teleport()
